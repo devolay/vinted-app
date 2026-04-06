@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vinted-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-vinted_app}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: vinted-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATA_DIR=${DATA_DIR:-/data}
+      - UPLOAD_DIR=${UPLOAD_DIR:-/data/uploads}
+      - POSTGRES_DB=${POSTGRES_DB:-vinted_app}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST_PORT=5432
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_VISION_MODEL=${OPENAI_VISION_MODEL:-gpt-4.1-mini}
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/data
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: vinted-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+
+volumes:
+  backend_data:
+  postgres_data:
